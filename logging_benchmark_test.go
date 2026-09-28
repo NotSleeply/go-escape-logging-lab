@@ -11,9 +11,9 @@ import (
 
 var benchmarkError = errors.New("database unavailable")
 
-// opaqueDiscard forwards to io.Discard without being equal to io.Discard.
-// The standard log package recognizes a direct io.Discard writer and returns
-// before formatting its arguments, which would make this comparison invalid.
+// opaqueDiscard 转发到 io.Discard，但自身不等于 io.Discard。
+// 标准库 log 识别到直接传入 io.Discard 时会在格式化参数前直接返回，
+// 会使三者的对比失去意义。
 type opaqueDiscard struct {
 	target io.Writer
 }
@@ -24,9 +24,8 @@ func (w opaqueDiscard) Write(p []byte) (int, error) {
 
 var benchmarkOutput io.Writer = opaqueDiscard{target: io.Discard}
 
-// Each logger is enabled and ultimately writes to io.Discard. This deliberately
-// keeps encoding and argument handling on the measured path while removing
-// terminal and disk I/O from the result.
+// 三个日志器均启用，最终写入 io.Discard。这样会保留编码和参数处理路径，
+// 同时排除终端和磁盘 I/O 对结果的影响。
 func BenchmarkPrimitiveFields(b *testing.B) {
 	request := SampleRequest()
 
