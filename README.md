@@ -19,11 +19,11 @@
 
 ## 场景
 
-- `BenchmarkPrimitiveFields`：字符串、整数等标量字段。
-- `BenchmarkStructuredValue`：结构体按值传入通用字段。
-- `BenchmarkStructuredPointer`：结构体指针传入通用字段。
-- `BenchmarkErrorField`：`error` 作为日志字段。
-- `BenchmarkDynamicArguments`：动态键值参数与格式化参数。
+- `BenchmarkPrimitiveFields`：字符串、整数等标量字段。zap 使用 `zap.String`、`zap.Int` 构造强类型 `zap.Field`；slog 使用 `LogAttrs` 配合 `slog.String`、`slog.Int`；log 将相同字段写入 `primitiveRecord`，通过 `encoding/json` 编码后交给 `log.Logger` 输出。
+- `BenchmarkStructuredValue`：结构体按值传入通用字段。zap 使用 `zap.Any("request", request)`；slog 使用 `slog.Any("request", request)`；log 将结构体值写入 `structuredValueRecord`，通过 `encoding/json` 编码后输出。
+- `BenchmarkStructuredPointer`：结构体指针传入通用字段。zap 使用 `zap.Any("request", &request)`；slog 使用 `slog.Any("request", &request)`；log 将 `&request` 写入 `structuredPointerRecord`，通过 `encoding/json` 编码后输出。该场景用于观察局部 `request` 取地址后是否被移动到堆上。
+- `BenchmarkErrorField`：`error` 作为日志字段。zap 使用 `zap.Error(benchmarkError)`；slog 使用 `slog.Any("error", benchmarkError)`；log 调用 `benchmarkError.Error()` 得到字符串，写入 `errorRecord` 后进行 JSON 编码和输出。
+- `BenchmarkDynamicArguments`：运行时动态键值参数。zap 使用 `SugaredLogger.Infow` 接收 `...any` 键值对；slog 使用 `Logger.Info` 接收 `...any` 键值对；log 没有原生结构化字段 API，因此使用 `map[string]any` 保存动态字段，再通过 `encoding/json` 编码后输出。
 
 ## 运行
 
