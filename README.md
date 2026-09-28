@@ -6,8 +6,6 @@
 
 `go run .` 会先各输出一条日志，再让每种日志器记录 100 万次相同的标量字段，输出总耗时和平均 `ns/op`。计时阶段最终写入 `io.Discard`，不会被终端 I/O 主导。
 
-日志中的 `latency=3ms` 是固定的业务字段，不是日志调用耗时；将输入固定才能让三种 API 在相同条件下比较。日志调用本身的耗时以程序后半段的 `平均 ... ns/op` 为准。
-
 每个 API 的语义不同，结果应结合调用形式解读。
 
 ## 设计边界
@@ -19,7 +17,7 @@
 
 ## 场景
 
-- `BenchmarkPrimitiveFields`：字符串、整数、`time.Duration` 等标量字段。
+- `BenchmarkPrimitiveFields`：字符串、整数等标量字段。
 - `BenchmarkStructuredValue`：结构体按值传入通用字段。
 - `BenchmarkStructuredPointer`：结构体指针传入通用字段。
 - `BenchmarkErrorField`：`error` 作为日志字段。

@@ -38,7 +38,6 @@ func BenchmarkPrimitiveFields(b *testing.B) {
 				zap.String("request_id", request.ID),
 				zap.String("path", request.Path),
 				zap.Int("status", request.Status),
-				zap.Duration("latency", request.Latency),
 			)
 		}
 	})
@@ -52,7 +51,6 @@ func BenchmarkPrimitiveFields(b *testing.B) {
 				slog.String("request_id", request.ID),
 				slog.String("path", request.Path),
 				slog.Int("status", request.Status),
-				slog.Duration("latency", request.Latency),
 			)
 		}
 	})
@@ -62,8 +60,8 @@ func BenchmarkPrimitiveFields(b *testing.B) {
 		b.ReportAllocs()
 		b.ResetTimer()
 		for b.Loop() {
-			logger.Printf("request completed request_id=%s path=%s status=%d latency=%s",
-				request.ID, request.Path, request.Status, request.Latency)
+			logger.Printf("request completed request_id=%s path=%s status=%d",
+				request.ID, request.Path, request.Status)
 		}
 	})
 }
@@ -173,7 +171,6 @@ func BenchmarkDynamicArguments(b *testing.B) {
 				"request_id", request.ID,
 				"path", request.Path,
 				"status", request.Status,
-				"latency", request.Latency,
 			)
 		}
 	})
@@ -187,7 +184,6 @@ func BenchmarkDynamicArguments(b *testing.B) {
 				"request_id", request.ID,
 				"path", request.Path,
 				"status", request.Status,
-				"latency", request.Latency,
 			)
 		}
 	})
@@ -197,8 +193,8 @@ func BenchmarkDynamicArguments(b *testing.B) {
 		b.ReportAllocs()
 		b.ResetTimer()
 		for b.Loop() {
-			logger.Printf("request completed request_id=%s path=%s status=%d latency=%s",
-				request.ID, request.Path, request.Status, request.Latency)
+			logger.Printf("request completed request_id=%s path=%s status=%d",
+				request.ID, request.Path, request.Status)
 		}
 	})
 }

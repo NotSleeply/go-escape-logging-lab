@@ -14,19 +14,17 @@ import (
 
 // Request 是三个日志库共用的结构化日志数据。
 type Request struct {
-	ID      string
-	Path    string
-	Status  int
-	Latency time.Duration
+	ID     string
+	Path   string
+	Status int
 }
 
 // SampleRequest 返回固定的示例请求，便于观察三种日志输出形式。
 func SampleRequest() Request {
 	return Request{
-		ID:      "req-9f5d20",
-		Path:    "/v1/orders/42",
-		Status:  200,
-		Latency: 3 * time.Millisecond,
+		ID:     "req-9f5d20",
+		Path:   "/v1/orders/42",
+		Status: 200,
 	}
 }
 
@@ -78,15 +76,14 @@ func main() {
 func showLogExamples(request Request) {
 
 	standard := NewStdLogger(os.Stdout)
-	standard.Printf("log: request completed request_id=%s path=%s status=%d latency=%s",
-		request.ID, request.Path, request.Status, request.Latency)
+	standard.Printf("log: request completed request_id=%s path=%s status=%d",
+		request.ID, request.Path, request.Status)
 
 	structured := NewSlogLogger(os.Stdout)
 	structured.LogAttrs(nil, slog.LevelInfo, "slog: request completed",
 		slog.String("request_id", request.ID),
 		slog.String("path", request.Path),
 		slog.Int("status", request.Status),
-		slog.Duration("latency", request.Latency),
 	)
 
 	fast := NewZapLogger(os.Stdout)
@@ -94,7 +91,6 @@ func showLogExamples(request Request) {
 		zap.String("request_id", request.ID),
 		zap.String("path", request.Path),
 		zap.Int("status", request.Status),
-		zap.Duration("latency", request.Latency),
 	)
 	_ = fast.Sync()
 }
@@ -106,7 +102,6 @@ func measureZap(request Request) {
 		zap.String("request_id", request.ID),
 		zap.String("path", request.Path),
 		zap.Int("status", request.Status),
-		zap.Duration("latency", request.Latency),
 	)
 
 	startedAt := time.Now()
@@ -115,7 +110,6 @@ func measureZap(request Request) {
 			zap.String("request_id", request.ID),
 			zap.String("path", request.Path),
 			zap.Int("status", request.Status),
-			zap.Duration("latency", request.Latency),
 		)
 	}
 	printMeasurement("zap 强类型字段", time.Since(startedAt))
@@ -128,7 +122,6 @@ func measureSlog(request Request) {
 		slog.String("request_id", request.ID),
 		slog.String("path", request.Path),
 		slog.Int("status", request.Status),
-		slog.Duration("latency", request.Latency),
 	)
 
 	startedAt := time.Now()
@@ -137,7 +130,6 @@ func measureSlog(request Request) {
 			slog.String("request_id", request.ID),
 			slog.String("path", request.Path),
 			slog.Int("status", request.Status),
-			slog.Duration("latency", request.Latency),
 		)
 	}
 	printMeasurement("slog 属性字段", time.Since(startedAt))
@@ -146,13 +138,13 @@ func measureSlog(request Request) {
 // measureStdLog 测量标准库 log.Printf 的调用耗时。
 func measureStdLog(request Request) {
 	logger := NewStdLogger(measurementOutput)
-	logger.Printf("request completed request_id=%s path=%s status=%d latency=%s",
-		request.ID, request.Path, request.Status, request.Latency)
+	logger.Printf("request completed request_id=%s path=%s status=%d",
+		request.ID, request.Path, request.Status)
 
 	startedAt := time.Now()
 	for range measurementIterations {
-		logger.Printf("request completed request_id=%s path=%s status=%d latency=%s",
-			request.ID, request.Path, request.Status, request.Latency)
+		logger.Printf("request completed request_id=%s path=%s status=%d",
+			request.ID, request.Path, request.Status)
 	}
 	printMeasurement("log.Printf", time.Since(startedAt))
 }
