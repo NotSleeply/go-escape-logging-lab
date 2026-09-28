@@ -6,7 +6,6 @@ import (
 	"io"
 	"log"
 	"log/slog"
-	"os"
 	"time"
 
 	"go.uber.org/zap"
@@ -88,41 +87,14 @@ func (w discardWriter) Write(p []byte) (int, error) {
 
 var discardedOutput io.Writer = discardWriter{target: io.Discard}
 
-// main 先展示等价 JSON，再横向测量三种日志系统的运行耗时。
+// main 横向测量三种日志系统生成等价 JSON 的运行耗时。
 func main() {
 	request := sampleRequest()
-	showLogExamples(request)
 
-	fmt.Printf("\n等价 JSON 日志耗时：每种日志系统记录 %d 次\n", measurementIterations)
+	fmt.Printf("等价 JSON 日志耗时：每种日志系统记录 %d 次\n", measurementIterations)
 	measureZap(request)
 	measureSlog(request)
 	measureStdLog(request)
-}
-
-// showLogExamples 输出三条语义相同的 JSON 日志。
-func showLogExamples(request Request) {
-	standard := NewStdLogger(os.Stdout)
-	writeStdJSON(standard, primitiveRecord{
-		Message:   "request completed",
-		RequestID: request.ID,
-		Path:      request.Path,
-		Status:    request.Status,
-	})
-
-	structured := NewSlogLogger(os.Stdout)
-	structured.LogAttrs(nil, slog.LevelInfo, "request completed",
-		slog.String("request_id", request.ID),
-		slog.String("path", request.Path),
-		slog.Int("status", request.Status),
-	)
-
-	fast := NewZapLogger(os.Stdout)
-	fast.Info("request completed",
-		zap.String("request_id", request.ID),
-		zap.String("path", request.Path),
-		zap.Int("status", request.Status),
-	)
-	_ = fast.Sync()
 }
 
 // measureZap 测量 zap 生成等价 JSON 的耗时。
