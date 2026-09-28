@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"log"
@@ -12,15 +13,25 @@ import (
 	"go.uber.org/zap/zapcore"
 )
 
-// Request 是三个日志库共用的结构化日志数据。
+const measurementIterations = 1_000_000
+
+// Request 是三个日志系统共用的结构化数据。
 type Request struct {
-	ID     string
-	Path   string
-	Status int
+	ID     string `json:"id"`
+	Path   string `json:"path"`
+	Status int    `json:"status"`
 }
 
-// SampleRequest 返回固定的示例请求，便于观察三种日志输出形式。
-func SampleRequest() Request {
+// primitiveRecord 是标准库 log 生成等价 JSON 时使用的记录结构。
+type primitiveRecord struct {
+	Message   string `json:"msg"`
+	RequestID string `json:"request_id"`
+	Path      string `json:"path"`
+	Status    int    `json:"status"`
+}
+
+// sampleRequest 返回三种日志系统共用的固定输入。
+func sampleRequest() Request {
 	return Request{
 		ID:     "req-9f5d20",
 		Path:   "/v1/orders/42",
@@ -28,18 +39,28 @@ func SampleRequest() Request {
 	}
 }
 
-// NewZapLogger 创建输出 JSON 的 zap 日志器。
+// NewZapLogger 创建不包含时间和级别字段的 JSON 日志器。
 func NewZapLogger(out io.Writer) *zap.Logger {
-	encoder := zapcore.NewJSONEncoder(zap.NewProductionEncoderConfig())
+	config := zap.NewProductionEncoderConfig()
+	config.TimeKey = ""
+	config.LevelKey = ""
+	encoder := zapcore.NewJSONEncoder(config)
 	core := zapcore.NewCore(encoder, zapcore.AddSync(out), zap.InfoLevel)
 	return zap.New(core)
 }
 
-// NewSlogLogger 创建输出 JSON 的 slog 日志器。
+// NewSlogLogger 创建不包含时间和级别字段的 JSON 日志器。
 func NewSlogLogger(out io.Writer) *slog.Logger {
-	return slog.New(slog.NewJSONHandler(out, &slog.HandlerOptions{
+	handler := slog.NewJSONHandler(out, &slog.HandlerOptions{
 		Level: slog.LevelInfo,
-	}))
+		ReplaceAttr: func(groups []string, attr slog.Attr) slog.Attr {
+			if len(groups) == 0 && (attr.Key == slog.TimeKey || attr.Key == slog.LevelKey) {
+				return slog.Attr{}
+			}
+			return attr
+		},
+	})
+	return slog.New(handler)
 }
 
 // NewStdLogger 创建不带前缀和时间标记的标准库日志器。
@@ -47,47 +68,56 @@ func NewStdLogger(out io.Writer) *log.Logger {
 	return log.New(out, "", 0)
 }
 
-// measurementDiscard 最终将数据写入 io.Discard，但自身不是 io.Discard。
-// 这样标准库 log 不会在格式化参数之前直接跳过输出路径。
-type measurementDiscard struct {
+// writeStdJSON 让标准库 log 完成与 zap、slog 等价的 JSON 输出。
+func writeStdJSON(logger *log.Logger, record any) {
+	encoded, err := json.Marshal(record)
+	if err != nil {
+		panic(fmt.Sprintf("编码标准库日志失败：%v", err))
+	}
+	logger.Print(string(encoded))
+}
+
+// discardWriter 最终写入 io.Discard，但不会触发标准库 log 的快速跳过逻辑。
+type discardWriter struct {
 	target io.Writer
 }
 
-func (w measurementDiscard) Write(p []byte) (int, error) {
+func (w discardWriter) Write(p []byte) (int, error) {
 	return w.target.Write(p)
 }
 
-var measurementOutput io.Writer = measurementDiscard{target: io.Discard}
+var discardedOutput io.Writer = discardWriter{target: io.Discard}
 
-const measurementIterations = 1_000_000
-
-// main 先展示三种原生调用的输出，再测量同一标量字段的运行耗时。
+// main 先展示等价 JSON，再横向测量三种日志系统的运行耗时。
 func main() {
-	request := SampleRequest()
+	request := sampleRequest()
 	showLogExamples(request)
 
-	fmt.Printf("\n运行耗时：每种日志器记录 %d 次，输出写入 io.Discard\n", measurementIterations)
+	fmt.Printf("\n等价 JSON 日志耗时：每种日志系统记录 %d 次\n", measurementIterations)
 	measureZap(request)
 	measureSlog(request)
 	measureStdLog(request)
 }
 
-// showLogExamples 将三种日志格式各输出一次，便于观察字段编码差异。
+// showLogExamples 输出三条语义相同的 JSON 日志。
 func showLogExamples(request Request) {
-
 	standard := NewStdLogger(os.Stdout)
-	standard.Printf("log: request completed request_id=%s path=%s status=%d",
-		request.ID, request.Path, request.Status)
+	writeStdJSON(standard, primitiveRecord{
+		Message:   "request completed",
+		RequestID: request.ID,
+		Path:      request.Path,
+		Status:    request.Status,
+	})
 
 	structured := NewSlogLogger(os.Stdout)
-	structured.LogAttrs(nil, slog.LevelInfo, "slog: request completed",
+	structured.LogAttrs(nil, slog.LevelInfo, "request completed",
 		slog.String("request_id", request.ID),
 		slog.String("path", request.Path),
 		slog.Int("status", request.Status),
 	)
 
 	fast := NewZapLogger(os.Stdout)
-	fast.Info("zap: request completed",
+	fast.Info("request completed",
 		zap.String("request_id", request.ID),
 		zap.String("path", request.Path),
 		zap.Int("status", request.Status),
@@ -95,9 +125,9 @@ func showLogExamples(request Request) {
 	_ = fast.Sync()
 }
 
-// measureZap 测量 zap 强类型字段的调用耗时。
+// measureZap 测量 zap 生成等价 JSON 的耗时。
 func measureZap(request Request) {
-	logger := NewZapLogger(measurementOutput)
+	logger := NewZapLogger(discardedOutput)
 	logger.Info("request completed",
 		zap.String("request_id", request.ID),
 		zap.String("path", request.Path),
@@ -112,12 +142,12 @@ func measureZap(request Request) {
 			zap.Int("status", request.Status),
 		)
 	}
-	printMeasurement("zap 强类型字段", time.Since(startedAt))
+	printMeasurement("zap", time.Since(startedAt))
 }
 
-// measureSlog 测量 slog 属性字段的调用耗时。
+// measureSlog 测量 slog 生成等价 JSON 的耗时。
 func measureSlog(request Request) {
-	logger := NewSlogLogger(measurementOutput)
+	logger := NewSlogLogger(discardedOutput)
 	logger.LogAttrs(nil, slog.LevelInfo, "request completed",
 		slog.String("request_id", request.ID),
 		slog.String("path", request.Path),
@@ -132,21 +162,25 @@ func measureSlog(request Request) {
 			slog.Int("status", request.Status),
 		)
 	}
-	printMeasurement("slog 属性字段", time.Since(startedAt))
+	printMeasurement("slog", time.Since(startedAt))
 }
 
-// measureStdLog 测量标准库 log.Printf 的调用耗时。
+// measureStdLog 测量标准库 log 生成等价 JSON 的耗时。
 func measureStdLog(request Request) {
-	logger := NewStdLogger(measurementOutput)
-	logger.Printf("request completed request_id=%s path=%s status=%d",
-		request.ID, request.Path, request.Status)
+	logger := NewStdLogger(discardedOutput)
+	record := primitiveRecord{
+		Message:   "request completed",
+		RequestID: request.ID,
+		Path:      request.Path,
+		Status:    request.Status,
+	}
+	writeStdJSON(logger, record)
 
 	startedAt := time.Now()
 	for range measurementIterations {
-		logger.Printf("request completed request_id=%s path=%s status=%d",
-			request.ID, request.Path, request.Status)
+		writeStdJSON(logger, record)
 	}
-	printMeasurement("log.Printf", time.Since(startedAt))
+	printMeasurement("log + encoding/json", time.Since(startedAt))
 }
 
 // printMeasurement 输出总耗时和单次平均耗时。

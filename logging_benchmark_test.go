@@ -11,6 +11,21 @@ import (
 
 var benchmarkError = errors.New("database unavailable")
 
+type structuredValueRecord struct {
+	Message string  `json:"msg"`
+	Request Request `json:"request"`
+}
+
+type structuredPointerRecord struct {
+	Message string   `json:"msg"`
+	Request *Request `json:"request"`
+}
+
+type errorRecord struct {
+	Message string `json:"msg"`
+	Error   string `json:"error"`
+}
+
 // opaqueDiscard 转发到 io.Discard，但自身不等于 io.Discard。
 // 标准库 log 识别到直接传入 io.Discard 时会在格式化参数前直接返回，
 // 会使三者的对比失去意义。
@@ -27,7 +42,7 @@ var benchmarkOutput io.Writer = opaqueDiscard{target: io.Discard}
 // 三个日志器均启用，最终写入 io.Discard。这样会保留编码和参数处理路径，
 // 同时排除终端和磁盘 I/O 对结果的影响。
 func BenchmarkPrimitiveFields(b *testing.B) {
-	request := SampleRequest()
+	request := sampleRequest()
 
 	b.Run("zap_typed", func(b *testing.B) {
 		logger := NewZapLogger(benchmarkOutput)
@@ -55,13 +70,18 @@ func BenchmarkPrimitiveFields(b *testing.B) {
 		}
 	})
 
-	b.Run("log_printf", func(b *testing.B) {
+	b.Run("log_json", func(b *testing.B) {
 		logger := NewStdLogger(benchmarkOutput)
+		record := primitiveRecord{
+			Message:   "request completed",
+			RequestID: request.ID,
+			Path:      request.Path,
+			Status:    request.Status,
+		}
 		b.ReportAllocs()
 		b.ResetTimer()
 		for b.Loop() {
-			logger.Printf("request completed request_id=%s path=%s status=%d",
-				request.ID, request.Path, request.Status)
+			writeStdJSON(logger, record)
 		}
 	})
 }
@@ -72,7 +92,7 @@ func BenchmarkStructuredValue(b *testing.B) {
 		b.ReportAllocs()
 		b.ResetTimer()
 		for b.Loop() {
-			request := SampleRequest()
+			request := sampleRequest()
 			logger.Info("request completed", zap.Any("request", request))
 		}
 	})
@@ -82,18 +102,21 @@ func BenchmarkStructuredValue(b *testing.B) {
 		b.ReportAllocs()
 		b.ResetTimer()
 		for b.Loop() {
-			request := SampleRequest()
+			request := sampleRequest()
 			logger.Info("request completed", slog.Any("request", request))
 		}
 	})
 
-	b.Run("log_printf", func(b *testing.B) {
+	b.Run("log_json", func(b *testing.B) {
 		logger := NewStdLogger(benchmarkOutput)
 		b.ReportAllocs()
 		b.ResetTimer()
 		for b.Loop() {
-			request := SampleRequest()
-			logger.Printf("request completed request=%+v", request)
+			request := sampleRequest()
+			writeStdJSON(logger, structuredValueRecord{
+				Message: "request completed",
+				Request: request,
+			})
 		}
 	})
 }
@@ -104,7 +127,7 @@ func BenchmarkStructuredPointer(b *testing.B) {
 		b.ReportAllocs()
 		b.ResetTimer()
 		for b.Loop() {
-			request := SampleRequest()
+			request := sampleRequest()
 			logger.Info("request completed", zap.Any("request", &request))
 		}
 	})
@@ -114,18 +137,21 @@ func BenchmarkStructuredPointer(b *testing.B) {
 		b.ReportAllocs()
 		b.ResetTimer()
 		for b.Loop() {
-			request := SampleRequest()
+			request := sampleRequest()
 			logger.Info("request completed", slog.Any("request", &request))
 		}
 	})
 
-	b.Run("log_printf", func(b *testing.B) {
+	b.Run("log_json", func(b *testing.B) {
 		logger := NewStdLogger(benchmarkOutput)
 		b.ReportAllocs()
 		b.ResetTimer()
 		for b.Loop() {
-			request := SampleRequest()
-			logger.Printf("request completed request=%+v", &request)
+			request := sampleRequest()
+			writeStdJSON(logger, structuredPointerRecord{
+				Message: "request completed",
+				Request: &request,
+			})
 		}
 	})
 }
@@ -149,18 +175,21 @@ func BenchmarkErrorField(b *testing.B) {
 		}
 	})
 
-	b.Run("log_printf", func(b *testing.B) {
+	b.Run("log_json", func(b *testing.B) {
 		logger := NewStdLogger(benchmarkOutput)
 		b.ReportAllocs()
 		b.ResetTimer()
 		for b.Loop() {
-			logger.Printf("request failed error=%v", benchmarkError)
+			writeStdJSON(logger, errorRecord{
+				Message: "request failed",
+				Error:   benchmarkError.Error(),
+			})
 		}
 	})
 }
 
 func BenchmarkDynamicArguments(b *testing.B) {
-	request := SampleRequest()
+	request := sampleRequest()
 
 	b.Run("zap_sugared", func(b *testing.B) {
 		logger := NewZapLogger(benchmarkOutput).Sugar()
@@ -188,13 +217,17 @@ func BenchmarkDynamicArguments(b *testing.B) {
 		}
 	})
 
-	b.Run("log_printf", func(b *testing.B) {
+	b.Run("log_json_map", func(b *testing.B) {
 		logger := NewStdLogger(benchmarkOutput)
 		b.ReportAllocs()
 		b.ResetTimer()
 		for b.Loop() {
-			logger.Printf("request completed request_id=%s path=%s status=%d",
-				request.ID, request.Path, request.Status)
+			writeStdJSON(logger, map[string]any{
+				"msg":        "request completed",
+				"request_id": request.ID,
+				"path":       request.Path,
+				"status":     request.Status,
+			})
 		}
 	})
 }
